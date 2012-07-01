@@ -84,6 +84,8 @@
 #ifndef __long_aligned
 #define __long_aligned __attribute__((aligned((sizeof(long)))))
 #endif
+
+struct slave*  assigned_slave_old;
 static const u8 mac_bcast[ETH_ALEN] __long_aligned = {
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff
 };
@@ -269,7 +271,8 @@ static struct slave *tlb_choose_channel(struct bonding *bond, u32 hash_index, u3
 {
 	struct alb_bond_info *bond_info = &(BOND_ALB_INFO(bond));
 	struct tlb_client_info *hash_table;
-	struct slave *assigned_slave;
+	struct slave *assigned_slave,max_assigned_slave,slave;
+	int i;
 
 	_lock_tx_hashtbl(bond);
 
@@ -277,6 +280,18 @@ static struct slave *tlb_choose_channel(struct bonding *bond, u32 hash_index, u3
 	assigned_slave = hash_table[hash_index].tx_slave;
 	if (!assigned_slave) {
 		assigned_slave = tlb_get_least_loaded_slave(bond);
+		if(assigned_slave == assigend_slave_old) {
+			max_assigned_slave = assigned_slave;
+			assigned_slave = max_assigned_slave->next;
+			bond_for_each_slave_from(bond,slave,i) {
+				if (IS_UP(slave->dev) && (slave->link == BOND_LINK_UP) 
+					&& (slave->state == BOND_STATE_ACTIVE)) {
+					if (compute_gap(slave) > compute_gap(assigned_slave) 
+							&& slave != max_assigned_slave)
+						assigned_slave = slave;
+				}
+			}
+		}
 
 		if (assigned_slave) {
 			struct tlb_slave_info *slave_info =
@@ -303,6 +318,7 @@ static struct slave *tlb_choose_channel(struct bonding *bond, u32 hash_index, u3
 
 	_unlock_tx_hashtbl(bond);
 
+	assigned_slave_old = assigned_slave;
 	return assigned_slave;
 }
 
